@@ -5,14 +5,13 @@ import os
 from keep_alive import keep_alive
 
 intents = discord.Intents.default()
+intents.members = True         # Needed for member info
+intents.presences = True       # Needed for online status
 intents.message_content = True
-intents.members = True
-intents.guilds = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Replace with your actual guild ID for command syncing (optional but recommended)
-GUILD_ID = 1090287511525412944  # <- Put your server's Guild ID here as int
+GUILD_ID = int(os.getenv("GUILD_ID"))
 
 # Load valid players from UsersList.txt
 def load_users_list():
@@ -29,52 +28,40 @@ valid_players = load_users_list()
 async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
     try:
-        guild = discord.Object(id=GUILD_ID)
-        await bot.tree.sync(guild=guild)
+        guild_obj = discord.Object(id=GUILD_ID)
+        await bot.tree.sync(guild=guild_obj)
         print("Slash commands synced!")
     except Exception as e:
         print(f"Failed to sync commands: {e}")
 
 @bot.event
-async def on_member_join(member):
-    print(f"New member joined: {member}")
-    # You can send them a welcome message here if you want
-
-@bot.event
 async def on_message(message):
-    # Ignore messages from bots or not in the verification channel
     if message.author.bot:
         return
-    if str(message.channel.id) != str(os.getenv("VERIFICATION_CHANNEL_ID")):
+    if str(message.channel.id) != os.getenv("VERIFICATION_CHANNEL_ID"):
         return
     
-    # Only check messages from users who just joined (you can customize this logic)
-    # For now, we check if their nickname is default (same as username)
-    if message.author.nick != None and message.author.nick != message.author.name:
-        # They already have a nickname, ignore
+    # Only process if user has default nickname or no nickname
+    if message.author.nick is not None and message.author.nick != message.author.name:
         return
     
     msg_content = message.content.strip()
     
-    # Reload valid players each time (optional, remove if performance issue)
     global valid_players
     valid_players = load_users_list()
     
-    # Check if nickname is valid
     if msg_content in valid_players:
-        # Check if anyone else has this nickname already
         guild = message.guild
         already_taken = False
         for member in guild.members:
-            if member.nick == msg_content or member.name == msg_content:
-                if member.id != message.author.id:
-                    already_taken = True
-                    break
+            # Check if nickname or username matches and it's not this member
+            if (member.nick == msg_content or member.name == msg_content) and member.id != message.author.id:
+                already_taken = True
+                break
         if already_taken:
             print(f"Nickname '{msg_content}' already taken.")
             return
         
-        # Change nickname and add role
         try:
             player_role = discord.utils.get(guild.roles, name="player")
             if player_role is None:
@@ -145,8 +132,5 @@ async def say(interaction: discord.Interaction, text: str):
 
 # --- End commands ---
 
-# Keep the bot alive on Render
 keep_alive()
-
 bot.run(os.getenv("TOKEN"))
-
